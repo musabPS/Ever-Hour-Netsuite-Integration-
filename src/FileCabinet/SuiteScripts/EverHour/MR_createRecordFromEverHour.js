@@ -19,13 +19,17 @@
      function getInputData() 
      {
 
-         try{
+         try
+         {
+          
+            var filters = runtime.getCurrentScript().getParameter({name: "custscript_subsidaryform"});
 
+            log.debug('custscript_subsidaryform', filters)
             log.debug("checck","checkhit")
 
             return {type: 'search', id:'customsearch1296'}
 
-      }
+         }
       catch (e) {
 
             log.error({
@@ -44,10 +48,14 @@
              var res = JSON.parse(context.value);
               log.debug("check",res);
 
-         
-             // log.debug('values', res.values)
+              var filters = runtime.getCurrentScript().getParameter({name: "custscript_subsidaryform"});
 
-            
+              log.debug('custscript_subsidaryformfilters', filters)
+
+              var subsidiary   =  res.values.custrecord_everhourprocessingqueue_subsd.value
+              var status       =   res.values.custrecord_everprocessingstatus.text
+              var netsuiteInternalId =   res.values.custrecord_everhourprocessingqueue_inid
+              var everHourTaskId   = res.values.custrecord_everhourprocessigqueue_taskid
 
               if(res.values.custrecord_everhourprocessingqueue_rcd.text=="Client")
               {
@@ -56,11 +64,11 @@
                 log.debug('data', data)
                 log.debug('cdataatty', data[0])
 
-                CreateCustomers(data, res.values.custrecord_everhourprocessingqueue_rcrid, res.id)
+                CreateCustomers(data, res.values.custrecord_everhourprocessingqueue_rcrid, res.id ,subsidiary, status, netsuiteInternalId)
 
               }
 
-           else  if(res.values.custrecord_everhourprocessingqueue_rcd.text=="Team")
+             else  if(res.values.custrecord_everhourprocessingqueue_rcd.text=="Team")
              {
                  
                 log.debug('custrecord_everhourprocessingqueue_rcrid', res.values.custrecord_everhourprocessingqueue_rcrid)
@@ -71,7 +79,7 @@
 
                 var data= JSON.parse(res.values.custrecord_everhourprocessingqueue_data) 
 
-                createEmployees(data, res.values.custrecord_everhourprocessingqueue_rcrid,res.id)
+                createEmployees(data, res.values.custrecord_everhourprocessingqueue_rcrid,res.id ,subsidiary)
 
                 log.debug('name', data.name) 
              }
@@ -99,7 +107,7 @@
                       if(customerName.length>0)
                       {
                           log.debug("res.values.custrecord_everhourprocessingqueue_prtid", res.values.custrecord_everhourprocessingqueue_rcrid)
-                         projectId  = createProjects(data, res.values.custrecord_everhourprocessingqueue_rcrid, res.id, customerName[0].id, customerName[0].values.entityid)
+                         projectId  = createProjects(data, res.values.custrecord_everhourprocessingqueue_rcrid, res.id, customerName[0].id, customerName[0].values.entityid ,subsidiary,  status, netsuiteInternalId)
                          // var netsuiteProjectInternlID = getproject( res.values.custrecord_everhourprocessingqueue_rcrid)
                              
                         
@@ -111,8 +119,9 @@
                             log.debug('employeeInternalId+'+j,employeeInternalId[0])
                             employeeInternalId = employeeInternalId[0].id
 
-                              createResourseAllocation(projectId, employeeInternalId)
+                              createResourseAllocation(projectId, employeeInternalId ,subsidiary)
                          }
+                         
 
       
                          var projectTasks =  getProjectTasks(res.values.custrecord_everhourprocessingqueue_rcrid)
@@ -130,12 +139,33 @@
                                      log.debug("taskData",taskData)
                                      log.debug("projecTask.custrecord_everhourprocessingqueue_rcrid",projecTask.custrecord_everhourprocessingqueue_rcrid)
             
-                                      var taskInternalId =  CreateProjectTask(taskData, projectTasks[i].values.custrecord_everhourprocessingqueue_rcrid, projectId, projectTasks[i].id)
+                                      var taskInternalId =  CreateProjectTask(taskData, projectTasks[i].values.custrecord_everhourprocessingqueue_rcrid, projectId, projectTasks[i].id ,subsidiary)
+
+                                    var employeePlannedWork = getProjectTaskSUMPlannedWork(projectId)
+                                    log.debug("employeePlannedWork",employeePlannedWork)
+                                   // [{"values":{"SUM(plannedwork)":"6","GROUP(projectTaskAssignment.resource)":[{"value":"2358","text":"Jenny"}]}}]
+                                    var resourcesAllocation = getResourceAllocation(projectId)
+                                    log.debug("resourcesAllocation",resourcesAllocation)
+                                 //   [{"recordType":"resourceallocation","id":"9298","values":{"resource":[{"value":"2358","text":"Jenny"}],"internalid":[{"value":"9298","text":"9298"}]}}]
+                                   //   createTimeTracking(taskData, projectId, taskInternalId)
 
 
-                                      createTimeTracking(taskData, projectId, taskInternalId)
+                                   for(var ix=0; ix<employeePlannedWork.length; ix++)
+                                   {
 
+                                    for(var jx=0; jx<resourcesAllocation.length; jx++)
+                                    {
 
+                                        if(employeePlannedWork[ix].values["GROUP(projectTaskAssignment.resource)"][0].value == resourcesAllocation[jx].values.resource[0].value)
+                                        {
+                                            updateResourceAllocation( resourcesAllocation[jx].id, employeePlannedWork[ix].values['SUM(plannedwork)'])
+                                            break
+                                        }
+
+                                    }
+
+                                    
+                                   }
                                    //log.debug("netsuiteProjectInternlID",netsuiteProjectInternlID)
             
                                }
@@ -165,17 +195,48 @@
                 var netsuiteProject =  getproject(res.values.custrecord_everhourprocessingqueue_prtid)
                 if(netsuiteProject.length>0)
                 {
-                    log.debug('task', "task") 
+                   
                     internalId = netsuiteProject[0].id
                     taskData = JSON.parse(res.values.custrecord_everhourprocessingqueue_data)
-
+                    log.debug('task internalId', internalId) 
 
                     
                     if(isTaskInPending(res.id))
                     {
-                        var taskInternalId =  CreateProjectTask(taskData, res.values.custrecord_everhourprocessingqueue_rcrid, internalId, res.id)
-                        createTimeTracking(taskData, projectId, taskInternalId)
+                        var taskInternalId =  CreateProjectTask(taskData, res.values.custrecord_everhourprocessingqueue_rcrid, internalId, res.id ,status, netsuiteInternalId)
+
+                        var employeePlannedWork = getProjectTaskSUMPlannedWork(internalId)
+                        log.debug("employeePlannedWork",employeePlannedWork)
+                       // [{"values":{"SUM(plannedwork)":"6","GROUP(projectTaskAssignment.resource)":[{"value":"2358","text":"Jenny"}]}}]
+                        var resourcesAllocation = getResourceAllocation(internalId)
+                        log.debug("resourcesAllocation",resourcesAllocation)
+                     //   [{"recordType":"resourceallocation","id":"9298","values":{"resource":[{"value":"2358","text":"Jenny"}],"internalid":[{"value":"9298","text":"9298"}]}}]
+                       //   createTimeTracking(taskData, projectId, taskInternalId)
+                       
+                        for(var ix=0; ix<employeePlannedWork.length; ix++)
+                        {
+
+                         for(var jx=0; jx<resourcesAllocation.length; jx++)
+                         {
+
+                             if(employeePlannedWork[ix].values["GROUP(projectTaskAssignment.resource)"][0].value == resourcesAllocation[jx].values.resource[0].value)
+                             {
+                                 updateResourceAllocation( resourcesAllocation[jx].id, employeePlannedWork[ix].values['SUM(plannedwork)'])
+                                 break
+                             }
+
+                         }
+
+                         
+                        }
+
+                     //   createTimeTracking(taskData, 13072, taskInternalId)
                     }
+
+                }
+                else
+                {
+                    updateErrorProcessQueue(res.id,"Project not found in netsuite")
 
                 }
 
@@ -198,33 +259,59 @@
                      createExpenseReport(data,res.id)
               }
 
+              else if(res.values.custrecord_everhourprocessingqueue_rcd.text=="Time Sheet")
+              {
+                var data= JSON.parse(res.values.custrecord_everhourprocessingqueue_data) 
+                log.debug('name', data.name) 
+                
+                createTimeTracking(data,everHourTaskId, res.id)
+              }
+
+
 
 
          } 
 
          catch (e) 
          {
+            var res = JSON.parse(context.value);
+             updateErrorProcessQueue(res.id, JSON.stringify(e))
              log.error({title:"MAP Error",details:JSON.stringify(e)});
          }
      }
 
      
 
-     function CreateCustomers(data,Id,internalId)
+     function CreateCustomers(data,Id,internalId,subsidiary , status, netsuiteInternalId)
      {
 
 
         log.debug("crusrsssinfunction",Id)
-        log.debug("internalId",internalId)
+        log.debug("netsuiteInternalId",netsuiteInternalId)
 
         log.debug("data.name",data.name)
       //  log.debug("data.name",data.email[0])
+      var everHour
+      if(status=="Pending Update")
+      {
+        everHour = record.load({
+            id: netsuiteInternalId,
+            type: 'customer', 
+            isDynamic: true
+         });
 
+      }
 
-        var everHour = record.create({
+      else if(status=="Pending")
+      {
+         everHour = record.create({
             type: 'customer', 
             isDynamic: false
         });
+      }
+
+
+      
 
         everHour.setValue({   
             fieldId: 'companyname',
@@ -233,7 +320,7 @@
 
         everHour.setValue({   
             fieldId: 'subsidiary',
-            value: 1
+            value: subsidiary
         });
 
         everHour.setValue({   
@@ -302,7 +389,7 @@
 
      }
 
-     function createEmployees(data,customEverHourId,internalId)
+     function createEmployees(data,customEverHourId,internalId ,subsidiary)
      {
         var everHour = record.create({
             type: 'employee', 
@@ -316,7 +403,7 @@
 
         everHour.setValue({   
             fieldId: 'subsidiary',
-            value: 1
+            value: subsidiary
         });
         everHour.setValue({   
             fieldId: 'custentity_everhourid',
@@ -351,14 +438,43 @@
 
      }
 
-     function createProjects(data,customEverHourId,internalId,customerId,customerName)
+     function createProjects(data,customEverHourId,internalId,customerId,customerName ,subsidiary, status, netsuiteInternalId)
      {
+        var everHourProjects
+        if(status=="Pending Update")
+        {
 
-        log.debug("checkcustomerinsidefunction", customerId)
-        var everHourProjects = record.create({
-            type: 'job', 
-            isDynamic: false
-        });
+              var resourcesAllocation = getResourceAllocation(netsuiteInternalId)
+               var projectTask  = getnetsuiteProjectTask(netsuiteInternalId)
+              log.debug("projecttask", projectTask)
+
+
+            for(var jx=0; jx<resourcesAllocation.length; jx++)
+            {
+                log.debug("resourcesAllocation", resourcesAllocation[jx].id)
+                record.delete({ type: 'resourceallocation', id: resourcesAllocation[jx].id });
+            }
+            for(var jx=0; jx<projectTask.length; jx++)
+            {
+                log.debug("projectTask[jx].id", projectTask[jx].id)
+                record.delete({ type: 'projecttask', id: projectTask[jx].id });
+            }
+
+            everHourProjects = record.load({
+                id: netsuiteInternalId,
+                type: 'job', 
+                isDynamic: true
+             });
+        }
+       
+        else
+        {
+            everHourProjects   = record.create({
+                type: 'job', 
+                isDynamic: false
+            });
+        }
+       
 
         everHourProjects.setValue({   
             fieldId: 'companyname',
@@ -378,6 +494,10 @@
         everHourProjects.setValue({   
             fieldId: 'custentity_everhourid',
             value: customEverHourId
+        });
+        everHourProjects.setValue({   
+            fieldId: 'subsidiary',
+            value: subsidiary
         });
 
         projectSaveId =  everHourProjects.save({                   
@@ -412,175 +532,268 @@
         return projectSaveId
      }
 
-     function CreateProjectTask(data,customEverHourId,ProjectInternalId,everHourIntenlaiId)
+     function CreateProjectTask(everHourData,customEverHourId,ProjectInternalId,everHourIntenlaiId ,subsidiary ,status, netsuiteInternalId)
      {
 
        //    log.debug("taskAssignees[i].userId",data.estimate.total)
 
-        var everHourProjects = record.create({
+       var everHourProjects 
+       var projectSaveId
+       var totalAllocateHours=0 ,assigneeInternalId
+
+       if(status=="Pending Update")
+       {
+
+        record.delete({ type: 'projecttask', id: netsuiteInternalId });
+
+       }
+
+        everHourProjects = record.create({
             type: 'projecttask', 
             isDynamic: true
         });
 
+ 
+         data = everHourData
+        
+        log.debug("taskAssignees[i].userId",data)
+        
+        clientInternalId = ""
 
-        var taskAssignees = data.assignees
 
-      
-        if(taskAssignees.length>0)
+        if(data.assignees)
         {
-
-            for(var i=0; i <taskAssignees.length; i++)
+            var taskAssignees = data.assignees
+            log.debug("taskAssignees[i].userId assignees",data.assignees)
+            if(taskAssignees.length>0)
             {
-             //   log.debug("taskAssignees[i].userId",taskAssignees[i].userId)
-                assigneeInternalId =  getEmployeesInternalId(taskAssignees[i].userId)
-                assigneeInternalId =  assigneeInternalId[i].id
+    
+                for(var i=0; i <taskAssignees.length; i++)
+                {
+                 //   log.debug("taskAssignees[i].userId",taskAssignees[i].userId)
+                    assigneeInternalId =  getEmployeesInternalId(taskAssignees[i].userId)
+                    log.debug("assigneeInternalId",assigneeInternalId)
+                    if(assigneeInternalId.length>0)
+                    {
 
-                everHourProjects.selectNewLine({ 
-                    sublistId: 'assignee',
-                });
-                everHourProjects.setCurrentSublistValue({   
-                    sublistId: 'assignee',
-                    fieldId: 'resource',
-                    value: assigneeInternalId
-                });
-                everHourProjects.setCurrentSublistValue({   
-                    sublistId: 'assignee',
-                    fieldId: 'estimatedwork',
-                    value: 1
-                });
+                        assigneeInternalId =  assigneeInternalId[0].id
+    
+                        everHourProjects.selectNewLine({ 
+                            sublistId: 'assignee',
+                        });
+                        everHourProjects.setCurrentSublistValue({   
+                            sublistId: 'assignee',
+                            fieldId: 'resource',
+                            value: assigneeInternalId
+                        });
+                        everHourProjects.setCurrentSublistValue({   
+                            sublistId: 'assignee',
+                            fieldId: 'estimatedwork',
+                            value: 1
+                        });
+        
+                        everHourProjects.setCurrentSublistValue({   
+                            sublistId: 'assignee',
+                            fieldId: 'unitcost',
+                            value: 1
+                        });
+                        
+                        everHourProjects.setCurrentSublistValue({   
+                            sublistId: 'assignee',
+                            fieldId: 'plannedwork',
+                            value: 1
+                        });
+                        
+                        everHourProjects.setCurrentSublistValue({   
+                            sublistId: 'assignee',
+                            fieldId: 'plannedwork',
+                            value: 1
+                        });
+        
+                        everHourProjects.commitLine({  
+                            sublistId: 'assignee'
+                        });
+                    }
 
-                everHourProjects.setCurrentSublistValue({   
-                    sublistId: 'assignee',
-                    fieldId: 'unitcost',
-                    value: 1
-                });
-                
-                everHourProjects.setCurrentSublistValue({   
-                    sublistId: 'assignee',
-                    fieldId: 'plannedwork',
-                    value: 1
-                });
+                    else
+                    {
+                        updateErrorProcessQueue(everHourIntenlaiId,"Customer not found in netsuite")
+                    }
+                  
 
-                everHourProjects.commitLine({  
-                    sublistId: 'assignee'
-                });
+    
+                }
+    
+                        
+                                    var userObj = runtime.getCurrentUser();
+                                    var dateFormat = userObj.getPreference({
+                                        name: 'DATEFORMAT'
+                                    });
 
+                                    
+
+                    var createdAt = moment(data.createdAt).format(dateFormat)
+                    createdAt = createdAt.toString()
+
+                    var dueOn = moment(data.dueOn).format(dateFormat)
+                    dueOn = dueOn.toString()
+
+                    log.debug("createdAt",createdAt)
+                    everHourProjects.setText({   
+                        fieldId: 'latestart',
+                        text: createdAt
+                    });
+                    everHourProjects.setText({   
+                        fieldId: 'lateend',
+                        text: dueOn
+                    });
+
+                    everHourProjects.setValue({   
+                        fieldId: 'title',
+                        value:data.name
+                    });
+
+                    everHourProjects.setValue({   
+                        fieldId: 'company',
+                        value:ProjectInternalId
+                    });
+
+                    // everHourProjects.setValue({   
+                    //     fieldId: 'customer',
+                    //     value: customerId
+                    // });
+                    everHourProjects.setValue({   
+                        fieldId: 'custevent_everhourid',
+                        value: customEverHourId
+                    });
+
+                    if(data.time)
+                    {
+                        everHourProjects.setValue({   
+                            fieldId: 'actualwork',
+                            value: (parseInt(data.time.total) / 3600)
+                        });
+                    }
+
+                    if(data.estimate)
+                    {
+                        log.debug("data.estimate.total",data.estimate.total)
+                        everHourProjects.setValue({   
+                            fieldId: 'plannedwork',
+                            value: (parseInt(data.estimate.total) / 3600)
+                        });
+
+                    }
+
+                    // if(data.dueOn)
+                    // {
+                    //     log.debug("data.estimate.total",data.estimate.total)
+                    //     everHourProjects.setValue({   
+                    //         fieldId: 'enddate',
+                    //         value: new Date (data.dueOn)
+                    //     });
+
+                    // }
+
+
+
+                    projectSaveId =  everHourProjects.save({                   
+                        ignoreMandatoryFields: true    
+                    });
+
+                        log.debug("checkprojectsTaskId",projectSaveId)
+
+                    var createUpdateprocess = record.load({
+                        id: everHourIntenlaiId,
+                        type: 'customrecord_everhourprocessingqueue', 
+                        isDynamic: true
+                    });
+
+                    createUpdateprocess.setText({   
+                        fieldId: 'custrecord_everprocessingstatus',
+                        text:  'Done'
+                    });
+
+                    createUpdateprocess.setValue({   
+                        fieldId: 'custrecord_everhourprocessingqueue_inid',
+                        value:  projectSaveId
+                    });
+
+                    saveId =  createUpdateprocess.save({                   
+                        ignoreMandatoryFields: true    
+                    });
+
+                   
+            }
+
+            else
+            {
+                updateErrorProcessQueue(everHourIntenlaiId,"Assignees not found")
             }
 
 
         }
 
-        
-        everHourProjects.setValue({   
-            fieldId: 'title',
-            value:data.name
-        });
-
-        everHourProjects.setValue({   
-            fieldId: 'company',
-            value:ProjectInternalId
-        });
-        
-        // everHourProjects.setValue({   
-        //     fieldId: 'customer',
-        //     value: customerId
-        // });
-        everHourProjects.setValue({   
-            fieldId: 'custevent_everhourid',
-            value: customEverHourId
-        });
-
-        if(data.time)
+        else
         {
-            everHourProjects.setValue({   
-                fieldId: 'actualwork',
-                value: (parseInt(data.time.total) / 3600)
-            });
+            updateErrorProcessQueue(everHourIntenlaiId,"Assignees not found")
         }
 
-        if(data.estimate)
-        {
-            log.debug("data.estimate.total",data.estimate.total)
-            everHourProjects.setValue({   
-                fieldId: 'plannedwork',
-                value: (parseInt(data.estimate.total) / 3600)
-            });
-
-        }
-
-        // if(data.dueOn)
-        // {
-        //     log.debug("data.estimate.total",data.estimate.total)
-        //     everHourProjects.setValue({   
-        //         fieldId: 'enddate',
-        //         value: new Date (data.dueOn)
-        //     });
-
-        // }
-
-       
-
-
-
-        projectSaveId =  everHourProjects.save({                   
-            ignoreMandatoryFields: true    
-        });
-
-             log.debug("checkprojectsTaskId",saveId)
-
-        var createUpdateprocess = record.load({
-            id: everHourIntenlaiId,
-            type: 'customrecord_everhourprocessingqueue', 
-            isDynamic: true
-        });
-
-        createUpdateprocess.setText({   
-            fieldId: 'custrecord_everprocessingstatus',
-            text:  'Done'
-          });
-
-          createUpdateprocess.setValue({   
-            fieldId: 'custrecord_everhourprocessingqueue_inid',
-            value:  saveId
-          });
-
-          saveId =  createUpdateprocess.save({                   
-            ignoreMandatoryFields: true    
-        });
-
+        
         return  projectSaveId
 
+
      }
-     function createTimeTracking(data, projectInternalId, taskInternalId)
+     function createTimeTracking(data,everHourTaskId, internalID)
      {
         
-          var taskAssignees = data.assignees
-         assigneeInternalId =  getEmployeesInternalId(taskAssignees[i].userId)
-         assigneeInternalId =  assigneeInternalId[i].id
+       
 
-        var everHourProjects = record.create({
-            type: 'timeentry', 
+          var taskAssignees = data.task.assignees[0].userId
+          assigneeInternalId =  getEmployeesInternalId(taskAssignees)
+          //TODO condition
+          assigneeInternalId =  assigneeInternalId[0].id
+
+
+          taskData   = getTaskInternalID(everHourTaskId)
+          //TODO Condition
+          projectInternalId  = taskData[0].values.company[0].value
+          taskInternalID     = taskData[0].id
+
+
+         var everHourProjects = record.create({
+            type: 'timebill', 
             isDynamic: true
         });
 
+        log.debug("assigneeInternalId",assigneeInternalId)
         everHourProjects.setValue({   
             fieldId: 'employee',
             value  :  assigneeInternalId
         });
 
+        log.debug("(parseInt(data.time) / 3600)",(data.time/ 3600))
         everHourProjects.setValue({   
             fieldId: 'hours',
-            value  :  (parseInt(data.time.total) / 3600)
+            value  :  ((data.time) / 3600)
         });
+        
 
+        log.debug("projectInternalId",projectInternalId)
         everHourProjects.setValue({   
             fieldId: 'customer',
             value  :  projectInternalId
         });
 
+        log.debug("taskInternalID",taskInternalID)
         everHourProjects.setValue({   
             fieldId: 'casetaskevent',
-            value  :  taskInternalId
+            value  :  taskInternalID
+        });
+
+        everHourProjects.setText({   
+            fieldId: 'trandate',
+            text  :  "1/10/2022"
         });
 
         
@@ -591,10 +804,31 @@
         log.debug("timetrackingId",projectSaveId)
         
 
+        var createUpdateprocess = record.load({
+            id: internalID,
+            type: 'customrecord_everhourprocessingqueue', 
+            isDynamic: true
+        });
+
+        createUpdateprocess.setText({   
+            fieldId: 'custrecord_everprocessingstatus',
+            text:  'Done'
+        });
+
+        createUpdateprocess.setValue({   
+            fieldId: 'custrecord_everhourprocessingqueue_inid',
+            value:  projectSaveId
+        });
+
+        saveId =  createUpdateprocess.save({                   
+            ignoreMandatoryFields: true    
+        });
+        
+
 
      }
 
-     function createResourseAllocation(projectId, employeeInternalId)
+     function createResourseAllocation(projectId, employeeInternalId ,subsidiary)
      {
 
         
@@ -619,6 +853,16 @@
         });
 
         resourcesAllocation.setValue({   
+            fieldId: 'project',
+            value: projectId
+        });
+
+        resourcesAllocation.setValue({   
+            fieldId: 'allocationtype',
+            value: 2
+        });
+
+        resourcesAllocation.setValue({   
             fieldId: 'allocationamount',
             value: 1
         });
@@ -632,7 +876,7 @@
 
      }
 
-     function createExpenseCategory(data,internalId)
+     function createExpenseCategory(data,internalId ,subsidiary)
      {
 
 
@@ -689,7 +933,7 @@
 
      }
 
-     function createExpenseReport(data,internalId)
+     function createExpenseReport(data,internalId ,subsidiary)
      {
 
         var employee    =  getEmployeesInternalId(data.user)
@@ -741,11 +985,6 @@
         });
 
 
-          
-
-          
-            
-             
         createCat.setValue({   
             fieldId: 'memo',
             value:data.details
@@ -826,6 +1065,28 @@
 
      }
 
+     function updateResourceAllocation(resourcesAllocationId, totalPlannedWork )
+     {
+       
+        var resourceAllocationLoad= record.load({
+            id: resourcesAllocationId,
+            type: 'resourceallocation', 
+            isDynamic: true
+        });
+
+        resourceAllocationLoad.setValue({   
+            fieldId: 'allocationamount',
+            value: totalPlannedWork
+        });
+
+        resourcesAllocationId =  resourceAllocationLoad.save({                   
+            ignoreMandatoryFields: true    
+        });
+
+        log.debug("updateAllocateWork",resourcesAllocationId)
+
+     }
+
      function updateErrorProcessQueue(internalId,errorMsg)
      {
 
@@ -848,8 +1109,6 @@
           saveId =  createUpdateSupportCase.save({                   
             ignoreMandatoryFields: true    
         });
-
-        
 
      }
 
@@ -945,7 +1204,7 @@
             [
                ["internalid","anyof",taskInternalId], 
                "AND", 
-               ["custrecord_everprocessingstatus","anyof","1"]
+               ["custrecord_everprocessingstatus","noneof","@NONE@","2","3"]
             ],
             columns:
             [
@@ -985,9 +1244,9 @@
             ]
          });
 
-         var isData = employeeSearchObj.run();
-         var isFinalResult = isData.getRange(0, 999);
-         var  parseData = JSON.parse(JSON.stringify(isFinalResult));
+         var Data = employeeSearchObj.run();
+         var FinalResult = Data.getRange(0, 999);
+         var  parseData = JSON.parse(JSON.stringify(FinalResult));
 
          return parseData
      }
@@ -1045,6 +1304,114 @@
          var  parseData = JSON.parse(JSON.stringify(isFinalResult));
 
          return parseData
+
+     }
+
+     function getProjectTaskSUMPlannedWork(internalId)
+     {
+
+        var projecttaskSearchObj = search.create({
+            type: "projecttask",
+            filters:
+            [
+               ["job.internalid","anyof",internalId]
+            ],
+            columns:
+            [
+               search.createColumn({
+                  name: "plannedwork",
+                  summary: "SUM",
+                  sort: search.Sort.ASC,
+                  label: "Planned Work"
+               }),
+               search.createColumn({
+                  name: "resource",
+                  join: "projectTaskAssignment",
+                  summary: "GROUP",
+                  label: "Resource"
+               })
+            ]
+         });
+         var Data = projecttaskSearchObj.run();
+         var FinalResult = Data.getRange(0, 999);
+         var  parseData = JSON.parse(JSON.stringify(FinalResult));
+
+         return parseData
+
+
+     }
+     function getResourceAllocation(projectInternalId)
+     {
+        var resourceallocationSearchObj = search.create({
+            type: "resourceallocation",
+            filters:
+            [
+               ["job.internalid","anyof",projectInternalId]
+            ],
+            columns:
+            [
+               search.createColumn({name: "resource", label: "Resource"}),
+               search.createColumn({name: "internalid", label: "Internal ID"})
+            ]
+         });
+
+         var Data = resourceallocationSearchObj.run();
+         var FinalResult = Data.getRange(0, 999);
+         var  parseData = JSON.parse(JSON.stringify(FinalResult));
+
+         return parseData
+
+     }
+
+     function getnetsuiteProjectTask(projectId)
+     {
+        var projecttaskSearchObj = search.create({
+            type: "projecttask",
+            filters:
+            [
+               ["job.internalid","anyof",projectId]
+            ],
+            columns:
+            [
+               search.createColumn({name: "id", label: "ID"}),
+               search.createColumn({name: "title", label: "Name"}),
+               search.createColumn({name: "internalid", label: "Internal ID"})
+            ]
+         });
+
+         var Data = projecttaskSearchObj.run();
+         var FinalResult = Data.getRange(0, 999);
+         var  parseData = JSON.parse(JSON.stringify(FinalResult));
+
+         return parseData
+
+
+
+     }
+
+     function getTaskInternalID(everHourTaskId)
+     {
+
+        var projecttaskSearchObj = search.create({
+            type: "projecttask",
+            filters:
+            [
+               ["custevent_everhourid","is",everHourTaskId]
+            ],
+            columns:
+            [
+               search.createColumn({name: "company", label: "Project"}),
+               search.createColumn({name: "internalid", label: "Internal ID"})
+            ]
+         });
+
+         var Data = projecttaskSearchObj.run();
+         var FinalResult = Data.getRange(0, 999);
+         var  parseData = JSON.parse(JSON.stringify(FinalResult));
+
+         return parseData
+
+
 
      }
 

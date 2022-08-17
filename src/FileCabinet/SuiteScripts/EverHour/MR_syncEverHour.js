@@ -36,7 +36,7 @@
                
             };
 
-            headers["X-Api-Key"]="6cd4-891e-b826b6-5c3f33-7eebf1f7"
+            headers["X-Api-Key"]="5e9e-295b-2afc4f-01718d-87732dfe"
 
 
 
@@ -125,7 +125,7 @@
 
                 var headers = {};
 
-                headers["X-Api-Key"]="6cd4-891e-b826b6-5c3f33-7eebf1f7"
+                headers["X-Api-Key"]="5e9e-295b-2afc4f-01718d-87732dfe"
 
                 log.debug("recordData.length", recordData.length)
 
@@ -228,7 +228,7 @@
                   
                     everHour.setText({   
                       fieldId: 'externalid',
-                      text:  recordId
+                      text:  type+"_"+recordId
                     });
                     
               saveId =  everHour.save({                   

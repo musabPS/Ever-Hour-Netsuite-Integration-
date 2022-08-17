@@ -4,8 +4,13 @@
  */
 
 
-define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', 'N/task','N/https'],
-    function (nsUi, record, redirect, search, nsFormat, nstask,https) {
+define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', 'N/task','N/https','N/runtime'],
+    function (nsUi, record, redirect, search, nsFormat, nstask,https,runtime) {
+
+        var totalRecordSync =["externalid","anyof"]
+
+        var everHourRecordIdArray= []
+
 
         function onRequest(context) {
   
@@ -18,8 +23,11 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
 
                 if (request.method === 'GET') {
                     log.debug('GET params', params);
+                  
+
                     getHandler(request, response, params);
                 } else {
+                   
                     postHandler(request, response, params);
                 }
             } catch (e) {
@@ -47,11 +55,21 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                 hideNavBar: false
             })
 
+
+            var subsidiary = form.addField({
+                id: "custfield_subsidiary",
+                 label: "subsidiary",
+                 type: nsUi.FieldType.SELECT,
+                 source: "subsidiary",
+                
+             });
+             subsidiary.isMandatory = true 
+
             form.addSubmitButton({
                 label: 'Sync Ever Hour Data'
             });
 
-                //     form.clientScriptModulePath = './cs_construction_bundle_for_suitelets.js';
+                     //form.clientScriptModulePath = 'SuiteScripts/EverHour/CS_ForSuiteletsyncEverHour.js';
 
                 //    form.addSubtab({ id: 'custpage_tab', label: 'Sales Orders' });
                     
@@ -82,11 +100,11 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                 type : nsUi.FieldType.TEXT
                });
 
-               var itm_id = sublist.addField({
-                id : 'custpage_error',
-                label : 'Error',
-                type : nsUi.FieldType.TEXT
-               });
+            //    var itm_id = sublist.addField({
+            //     id : 'custpage_error',
+            //     label : 'Error',
+            //     type : nsUi.FieldType.TEXT
+            //    });
                
                
                // Set Sublist data
@@ -122,64 +140,105 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                         line : 3,
                         value : "Task"
                         });
-               }
+
+                        // var checkSublist = form.getSublistField({ sublistId: 'sublist',
+                        //     fieldId: 'custpage_check',
+                        //     line: 3 });
+
+                        //     checkSublist.isDisabled = true;
+                }
 
                else
                {
                    
-               sublist.setSublistValue({
-                id : 'custpage_item',
-                line : 0,
-                value : "Expense Category"
-                });
+                sublist.setSublistValue({
+                    id : 'custpage_item',
+                    line : 0,
+                    value : "Expense Category"
+                    });
 
-               sublist.setSublistValue({
-                id : 'custpage_item',
-                line : 1,
-                value : "Expense"
-                });
+                sublist.setSublistValue({
+                    id : 'custpage_item',
+                    line : 1,
+                    value : "Expense"
+                    });
 
+                    sublist.setSublistValue({
+                        id : 'custpage_item',
+                        line : 2,
+                        value : "Single Time Entry"
+                        });
 
                }
 
                 selectedRecord=[]
                 var everHourToken = search.lookupFields({type: 'customrecord_everhourtokenset', id: 1, columns: "custrecord_everhour_tokenid"});
-                log.debug("everHourToken",everHourToken)
 
        var headers = {};
 
 
        headers["X-Api-Key"] = everHourToken.custrecord_everhour_tokenid
             
-          var netsuiteSummary = netsuiteSyncfromProcessingQueue()
+          var netsuiteSummary = 0
+
+          if(param.phase==1)
+          {
+            netsuiteSummary = netsuiteSyncfromProcessingQueue()
+            log.debug("checksummary",netsuiteSummary)
 
             recordStatus.push({
                 'record' : 'Client',
                 'everHourCount'    : getDataCountfromEverHourAPI(headers,"https://api.everhour.com/clients"),
-                'netsuiteCount'    : netsuiteSummary.filter(clientFilter)
+                'netsuiteCount'    :  netsuiteSummary.filter(function (el) {return el.record == "Client"}).length>0 ? netsuiteSummary.filter(function (el) {return el.record == "Client"})[0].count : 0
             })
-            function clientFilter(record) {return record == "Client"}
+           
 
             recordStatus.push({
                 'record' : 'Team',
                 'everHourCount'    : getDataCountfromEverHourAPI(headers,"https://api.everhour.com/team/users"),
-                'netsuiteCount'    : netsuiteSummary.filter(teamFilter)
+                'netsuiteCount'    : netsuiteSummary.filter(function (el) {return el.record == "Team"}).length>0 ? netsuiteSummary.filter(function (el) {return el.record == "Team"})[0].count : 0
             })
-            function teamFilter(record) {return record == "Team"}
+            
 
             recordStatus.push({
                 'record' : 'Project',
                 'everHourCount'    : getDataCountfromEverHourAPI(headers,"https://api.everhour.com/projects"),
-                'netsuiteCount'    : netsuiteSummary.filter(projectFilter)
+                'netsuiteCount'    : netsuiteSummary.filter(function (el) {return el.record == "Project"}).length>0 ? netsuiteSummary.filter(function (el) {return el.record == "Project"})[0].count : 0
             })
-            function projectFilter(record) {return record == "Project"}
+
+          }
+
+
+
+          
+            if(netsuiteSummary.length>0)
+            {
+                sublist.setSublistValue({
+                    id : 'custpage_tobesync',
+                    line : 0,
+                    value : recordStatus[0].everHourCount -  recordStatus[0].netsuiteCount
+                    });  
+
+                 sublist.setSublistValue({
+                    id : 'custpage_tobesync',
+                    line : 1,
+                    value : recordStatus[1].everHourCount -  recordStatus[1].netsuiteCount
+                    });  
+
+                sublist.setSublistValue({
+                    id : 'custpage_tobesync',
+                    line : 2,
+                     value : recordStatus[2].everHourCount -  recordStatus[2].netsuiteCount
+                    });  
+            }
+            
 
 
             log.debug("checkAllJSON",recordStatus)
 
 
             sublist.addMarkAllButtons(); 
-
+            
 
             response.writePage(form);
 
@@ -191,15 +250,21 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
            // var selectedLines = genlib.getSelectedLines(request,posting_period,subsidiary,project);
            ///// log.debug('selectedLines Post', selectedLines);
 
-            var totalLines = request.getLineCount({ group: 'sublist' });
-            var totalRecordSync =[]
+           log.debug("contextrequestbody",request.body)
+           log.debug("contextrequestbody",params)
 
-            checExist =  checkDataExsit(12)
+
+            var totalLines = request.getLineCount({ group: 'sublist' });
+           
+
+            everHourRecordIdArray = checkDataExsitArry()
+            log.debug('everHourRecordIdArray', everHourRecordIdArray);
+
 
             selectedLines = 0
             selectedRecord=[]
                      var everHourToken = search.lookupFields({type: 'customrecord_everhourtokenset', id: 1, columns: "custrecord_everhour_tokenid"});
-                     log.debug("everHourToken",everHourToken)
+                     log.debug("params.custfield_subsidiary",params.custfield_subsidiary)
 
 
             var headers = {};
@@ -240,9 +305,7 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                                log.debug("recordName",recordName)
                                var bodyData = JSON.parse(clientResponse.body) 
                                log.debug("clientResponse.body", JSON.parse(clientResponse.body) )
-                               createRecord(bodyData,"Client",headers)
-
-                  
+                               createRecord(bodyData,"Client",headers,params.custfield_subsidiary)
                           }
 
                           if(recordName=="Team")
@@ -255,14 +318,25 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                                log.debug("recordName",recordName)
                                var bodyData = JSON.parse(teamResponse.body) 
                                log.debug("teamResponse.body", JSON.parse(teamResponse.body) )
-                               createRecord(bodyData,"Team",headers)
+                               createRecord(bodyData,"Team",headers,params.custfield_subsidiary)
 
                   
                           }
 
                           if(recordName=="Project")
                           {
-                           // 
+
+
+                            // var clientResponse = https.get({
+                            //     url:"https://api.everhour.com/clients",
+                            //     headers: headers,
+                            //     body: {}
+                            //    });
+                            //    log.debug("recordName",recordName)
+                            //    var bodyData = JSON.parse(clientResponse.body) 
+                            //    log.debug("clientResponse.body", JSON.parse(clientResponse.body) )
+                            //    createRecord(bodyData,"Client",headers)
+                     
                             
                                 var projectResponse = https.get({
                                     url:"https://api.everhour.com/projects",
@@ -273,9 +347,39 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                                log.debug("recordName",recordName)
                                var bodyData = JSON.parse(projectResponse.body) 
                                log.debug("teamResponse.body", JSON.parse(projectResponse.body) )
-                               log.debug("teamResponse.body", JSON.parse(projectResponse.body) )
 
-                               createRecord(bodyData,"Project",headers)
+                               createRecord(bodyData,"Project",headers,params.custfield_subsidiary)
+                  
+                          }
+
+                          if(recordName=="Task")
+                          {
+                                    //    var projects = getAllProjectsForTasks()
+
+                                    //    log.debug("getAllProjectsForTasks",projects[0].values.custrecord_everhourprocessingqueue_rcrid)
+
+                                    //    for(var i=0; i<projects.length; i++)
+                                    //    {
+                                           
+                                    //         var clientResponse = https.get({
+                                    //             url:  "https://api.everhour.com/projects/"+projects[i].values.custrecord_everhourprocessingqueue_rcrid+"/tasks",
+                                    //             headers: headers,
+                                    //             body: {}
+                                    //         });
+
+                                    //         log.debug("res.projectsclientResponse.body",clientResponse.body)
+
+                                    //         var task= JSON.parse(clientResponse.body) 
+
+                                    //         //  createRecord(clientResponse.body ,'task', clientResponse.body.id)
+                                    //         for(var j=0 ; j<task.length; j++)
+                                    //         {
+
+                                    //             createPrjoectTasks(task[j],'Task',task[j].id,projects[0].values.custrecord_everhourprocessingqueue_rcrid ,params.custfield_subsidiary)
+                                    //         }
+
+                                    //    }
+                            
                   
                           }
 
@@ -310,6 +414,22 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                                createRecord(bodyData,"Expense",headers)
                   
                           }
+
+                          if(recordName=="Single Time Entry")
+                          {
+
+                            var projectResponse = https.get({
+                                url:"https://private-anon-49f6c906e2-everhour.apiary-proxy.com/team/time",
+                                headers: headers,
+                                body: {}
+                            });
+
+                           log.debug("recordName",recordName)
+                           var bodyData = JSON.parse(projectResponse.body) 
+                           log.debug("teamResponse.body", JSON.parse(projectResponse.body) )
+                           createRecord(bodyData,"Time Sheet",headers)
+
+                          }
                         
 
                         // selectedRecord.push(
@@ -337,20 +457,13 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
             {
 
 
-
-
-
-                
-                
-
-
-
                 // for (var i = 0; i < selectedLines; i++) {
                 //     var queueId = genlib.createQueueRecord(selectedLines[i]);
                 //     log.debug("queueId", queueId);
                 // }
+                log.debug("params.custfield_subsidiary",params.custfield_subsidiary)
 
-                var taskId = triggerDownload(selectedRecord);
+                var taskId = triggerDownload(selectedRecord,params.custfield_subsidiary);
 
                 log.debug("taskID(triggerDownload)",taskId)
 
@@ -359,6 +472,94 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                     });
                  //   genlib.showPostForm(form, queueId, taskId, selectedLines.length);
                     form.clientScriptModulePath = 'SuiteScripts/EverHour/CS_ForSuiteletsyncEverHour.js';
+
+                    var sublist = form.addSublist({
+                        id : 'sublist',
+                        type : nsUi.SublistType.LIST,
+                        label : 'Ever Hour Data Sync'
+                       });
+
+
+                       
+                    //    var check = sublist.addField({
+                    //     id : 'custpage_check',
+                    //     label : 'Check',
+                    //     type : nsUi.FieldType.CHECKBOX
+                    //    });
+                    //    check.updateDisplayType({displayType: nsUi.FieldDisplayType.ENTRY});
+                       
+                      
+
+                       var itm_id = sublist.addField({
+                        id : 'custpage_record_id',
+                        label : 'Ever Hour Id',
+                        type : nsUi.FieldType.TEXT
+                       });
+                       var itm_id = sublist.addField({
+                        id : 'custpage_name',
+                        label : 'Name',
+                        type : nsUi.FieldType.TEXT
+                       });
+                       var itm_id = sublist.addField({
+                        id : 'custpage_record_name',
+                        label : 'Record Type',
+                        type : nsUi.FieldType.TEXT
+                       });
+
+                       var itm_id = sublist.addField({
+                        id : 'custpage_status',
+                        label : 'Status',
+                        type : nsUi.FieldType.TEXT
+                       });
+
+                       var itm_id = sublist.addField({
+                        id : 'custpage_error',
+                        label : 'Netsuite Link',
+                        type : nsUi.FieldType.TEXT
+                       });
+
+                      
+                       if(totalRecordSync.length>2)
+                       {
+                        log.debug("totalRecordSync",totalRecordSync)
+                        var getDataSync = getProcessessQueue(totalRecordSync)
+                        for(var i=0; i<getDataSync.length; i++)
+                        {
+                           sublist.setSublistValue({
+                               id : 'custpage_record_id',
+                               line : i,
+                               value : getDataSync[i].values.custrecord_everhourprocessingqueue_rcrid
+                               });
+                               sublist.setSublistValue({
+                                id : 'custpage_name',
+                                line : i,
+                                value : getDataSync[i].values.custrecord_everhourprocessingqueue_recor
+                                });
+                               sublist.setSublistValue({
+                                   id : 'custpage_record_name',
+                                   line : i,
+                                   value : getDataSync[i].values.custrecord_everhourprocessingqueue_rcd[0].text
+                               });
+                               sublist.setSublistValue({
+                                id : 'custpage_status',
+                                line : i,
+                                value : getDataSync[i].values.custrecord_everprocessingstatus[0].text
+                            });
+                            sublist.setSublistValue({
+                                id : 'custpage_error',
+                                line : i,
+                                value : "-"
+                            });
+   
+   
+                        }
+                       }
+                      
+
+
+                     
+
+                   //  log.debug("checkClients",getDataSync)
 
 
                   var messageFld = form.addField({
@@ -423,6 +624,7 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
 
                 var taskStatus = nstask.checkStatus(taskId);
                 log.debug("taskStatu", taskStatus);
+               
 
 
                 var something=999;
@@ -458,44 +660,52 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
           
             
             }
+            else
+            {
+                triggerDownload(params,1)
+                response.writePage("No data found to be sync but script start executing to crete a pending record Please check the log");
+            }
 
 
         }
 
-        function triggerDownload(params) {
+        function triggerDownload(params,custfield_subsidiary) {
            
               var task = nstask.create({
                   taskType: nstask.TaskType.MAP_REDUCE,
                   scriptId: 'customscript_mrcreaterecordfromeverhour',
-                 // params: {"custscript_selectedrecord": params}
+                  params: {"custscript_subsidaryform": custfield_subsidiary}
               });
+            
       
               return task.submit();
            
           }
 
-          function createRecord(JsonData,type,header)
+          function createRecord(JsonData,type,header,subsidiary)
           {
          
-        
-
-            log.debug("JsonData.length",JsonData)
-
-            log.debug("JsonData.length",JsonData.length)
+             // log.debug("everHourRecordIdArray",everHourRecordIdArray)
 
             for(var i=0; i <JsonData.length; i++)
             {
 
-                log.debug("JsonData[i].name",JsonData[i].name)
+             //   log.debug("JsonData[i]"+i,JsonData[i])
 
-               
-     
+                if(JsonData[i].status=="archived")
+                {
+                    log.debug("JsonData[i].namearchived",JsonData[i])
+                    continue
+                }
+             //   checExist = checkDataExsit(JsonData[i].id)
         
-                log.debug("checExist",checExist)
-          
-                  if(checExist.length==0)
+        
+              //  log.debug("JsonData[i]"+JsonData[i].id,everHourRecordIdArray.indexOf(JsonData[i].id+""))
+                // if(everHourRecordIdArray.indexOf(JsonData[i].id) !== -1)
+                  if(everHourRecordIdArray.indexOf(type+"_"+JsonData[i].id)== -1)
                   {
-     
+                    log.debug("JsonData[i]-1111"+JsonData[i].id,everHourRecordIdArray.indexOf(JsonData[i].id+""))
+
                               var everHour = record.create({
                                 type: 'customrecord_everhourprocessingqueue', 
                                 isDynamic: false
@@ -503,6 +713,48 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                             everHour.setValue({   
                                 fieldId: 'custrecord_everhourprocessingqueue_data',
                                 value: JSON.stringify(JsonData[i])
+                            });
+          
+                            if(type=='Expense')
+                            {   
+                                everHour.setText({   
+                                    fieldId: 'custrecord_everhourprocessingqueue_prtid',
+                                    text:  JsonData[i].project
+                                });
+                                everHour.setValue({   
+                                    fieldId: 'custrecord_everhourprocessingqueue_recor',
+                                    value: JsonData[i].details
+                                });
+                            }
+
+                            else if(type=="Time Sheet")
+                            {
+
+                                everHour.setText({   
+                                    fieldId: 'custrecord_everhourprocessigqueue_taskid',
+                                    text:  JsonData[i].task.id
+                                });
+                                
+                                everHour.setValue({   
+                                    fieldId: 'custrecord_everhourprocessingqueue_recor',
+                                    value: JsonData[i].task.name
+                                });
+
+
+                            }
+                            else
+                            {
+                                everHour.setValue({   
+                                    fieldId: 'custrecord_everhourprocessingqueue_recor',
+                                    value: JsonData[i].name
+                                });
+
+
+                            }
+                           
+
+                            everHour.setValue({  fieldId: 'custrecord_everhourprocessingqueue_subsd',  
+                             value:  subsidiary 
                             });
           
           
@@ -520,59 +772,61 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                                 text:  JsonData[i].id
                               });
 
-                                if(type=='Expense')
-                                {   
-                                    everHour.setText({   
-                                        fieldId: 'custrecord_everhourprocessingqueue_prtid',
-                                        text:  JsonData[i].project
-                                    });
-                                }
-                                
-                                
+
                                 everHour.setText({   
                                     fieldId: 'externalid',
-                                    text:  JsonData[i].id
+                                    text:  type+"_"+JsonData[i].id
                                 });
+
+
                               
                         saveId =  everHour.save({                   
                             ignoreMandatoryFields: true    
                         });
 
+                        everHourRecordIdArray.push( type+"_"+JsonData[i].id)
 
-                        log.debug("CreateActivity",saveId)
+                        totalRecordSync.push( type+"_"+JsonData[i].id)
+
+
+                        log.debug("CreateActivity"+"--"+type+"_"+saveId)
                       //  totalRecordSync.push(saveId)
+
+                      if(type == 'Project')
+                      {
+                         
+                          log.debug("res.projectsJsonData[i]","https://api.everhour.com/projects/"+JsonData[i].id+"/tasks")
+                          var clientResponse = https.get({
+                              url:  "https://api.everhour.com/projects/"+JsonData[i].id+"/tasks",
+                              headers: header,
+                              body: {}
+                          });
+
+                          
+
+                          var task= JSON.parse(clientResponse.body) 
+
+                          //  createRecord(clientResponse.body ,'task', clientResponse.body.id)
+                          for(var j=0 ; j<task.length; j++)
+                          {
+                              log.debug("res.projects in Project for task",task)
+
+                              createPrjoectTasks(task[j],'Task',task[j].id,JsonData[i].id,subsidiary)
+                          }
+
+
+                      }
 
                       
                   }
 
-                  if(type=='Project')
-                        {
-                           
-               
-                            var clientResponse = https.get({
-                                url:  "https://api.everhour.com/projects/"+JsonData[i].id+"/tasks",
-                                headers: header,
-                                body: {}
-                            });
-
-                            log.debug("res.projects",clientResponse.body)
-
-                            var task= JSON.parse(clientResponse.body) 
-
-                            //  createRecord(clientResponse.body ,'task', clientResponse.body.id)
-                            for(var j=0 ; j<task.length; j++)
-                            {
-
-                                createPrjoectTasks(task[j],'Task',task[j].id,JsonData[i].id)
-                            }
-
-
-                        }
+                 
 
                       
             }
           
-           
+            var scriptObj = runtime.getCurrentScript();
+            log.debug('Remaining governance units: ' + scriptObj.getRemainingUsage());
      
           }
 
@@ -581,8 +835,9 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                 var customrecord_everhourprocessingqueueSearchObj = search.create({
                     type: "customrecord_everhourprocessingqueue",
                     filters:
-                    [
-                    ],
+                            [
+                                ["custrecord_everhourprocessingqueue_rcrid","is",recordId]
+                            ],
                     columns:
                     [
                     search.createColumn({name: "custrecord_everhourprocessingqueue_rcrid", label: "Record Id"}),
@@ -600,14 +855,42 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
 
          }
 
-         function createPrjoectTasks(JsonData,type,recordId,projectId)
+         function checkDataExsitArry()
+            {
+                var dataAarry=[]
+                var customrecord_everhourprocessingqueueSearchObj = search.create({
+                    type: "customrecord_everhourprocessingqueue",
+                    filters:
+                            [
+                            ],
+                    columns:
+                    [
+                    search.createColumn({name: "custrecord_everhourprocessingqueue_rcrid", label: "Record Id"}),
+                    search.createColumn({name: "custrecord_everhourprocessingqueue_prtid", label: "ProjectId"}),
+                    search.createColumn({name: "externalid", label: "External ID"}),
+                    ]
+                });
+                var isData = customrecord_everhourprocessingqueueSearchObj.run();
+                var isFinalResult = isData.getRange(0, 999);
+                var  parseData = JSON.parse(JSON.stringify(isFinalResult));
+
+                for(var i=0; i<parseData.length; i++)
+                {
+                    // parseData = 
+                    dataAarry.push(parseData[i].values.externalid[0].text)
+                }
+                return dataAarry
+
+            }
+
+         function createPrjoectTasks(JsonData,type,recordId,projectId,subsidiary)
          {
     
-          var isExist= checkDataExsit(recordId)
+         // var isExist= checkDataExsit(recordId)
     
-          log.debug("isExist",isExist)
+          log.debug("isExist in task function",projectId)
     
-          if(isExist.length==0)
+          if(everHourRecordIdArray.indexOf(type+"_"+recordId.toString())== -1)
           {
                     var everHour = record.create({
                       type: 'customrecord_everhourprocessingqueue', 
@@ -617,8 +900,17 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                       fieldId: 'custrecord_everhourprocessingqueue_data',
                       value: JSON.stringify(JsonData)
                   });
+
+                  everHour.setValue({   
+                    fieldId: 'custrecord_everhourprocessingqueue_recor',
+                    value: JsonData.name
+                });
     
     
+                  everHour.setValue({  fieldId: 'custrecord_everhourprocessingqueue_subsd',  
+                  value: subsidiary
+                 });
+
                       everHour.setText({   
                       fieldId: 'custrecord_everhourprocessingqueue_rcd',
                       text:  type
@@ -636,23 +928,24 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                       fieldId: 'custrecord_everhourprocessingqueue_prtid',
                       text:  projectId
                     });
+
+                    log.debug("isExist task before set in externalid",recordId)
                     everHour.setText({   
                       fieldId: 'externalid',
-                      text:  recordId
+                      text:  type+"_"+recordId
                     });
                   
                     saveId =  everHour.save({                   
                         ignoreMandatoryFields: true    
                     });
     
-                    log.debug("CreateActivity",saveId)
+                    log.debug("CreateActivity--"+'Task',type+"_"+recordId)
+                    everHourRecordIdArray.push(type+"_"+recordId)
+
+                    totalRecordSync.push(type+"_"+recordId)
           }
                  
                  
-                   
-    
-    
-    
     
          }
 
@@ -664,6 +957,9 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                 body: {}
                });
                var bodyData = JSON.parse(clientResponse.body) 
+
+               log.debug("bodyData",clientResponse)
+               if(clientResponse.code==200)
 
                return bodyData.length
          }
@@ -692,15 +988,16 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
                 ]
              });
 
-             var isData = customrecord_everhourprocessingqueueSearchObj.run();
-             var isFinalResult = isData.getRange(0, 999);
-             var  parseData = JSON.parse(JSON.stringify(isFinalResult));
+             var Data = customrecord_everhourprocessingqueueSearchObj.run();
+             var FinalResult = Data.getRange(0, 999);
+             var  parseData = JSON.parse(JSON.stringify(FinalResult));
+
 
              for(var i=0; i<parseData.length; i++)
              {
                 netsuiteSummryJSON.push({
-                    "record" : parseData[i].values["GROUP(custrecord_everhourprocessingqueue_rcd)"].text,
-                    "count" : parseData[i].values["COUNT(internalid)"].text
+                    "record" : parseData[i].values["GROUP(custrecord_everhourprocessingqueue_rcd)"][0].text,
+                    "count" : parseData[i].values["COUNT(internalid)"]
 
                 })
              }
@@ -710,10 +1007,56 @@ define(['N/ui/serverWidget', 'N/record', 'N/redirect', 'N/search', 'N/format', '
 
 
          }
+         function getAllProjectsForTasks()
+         {
+            var customrecord_everhourprocessingqueueSearchObj = search.create({
+                type: "customrecord_everhourprocessingqueue",
+                filters:
+                [
+                   ["custrecord_everhourprocessingqueue_rcd","anyof","3"]
+                ],
+                columns:
+                [
+                   search.createColumn({name: "custrecord_everhourprocessingqueue_rcrid", label: "Record Id"})
+                ]
+             });
 
+             var Data = customrecord_everhourprocessingqueueSearchObj.run();
+             var FinalResult = Data.getRange(0, 999);
+             var  parseData = JSON.parse(JSON.stringify(FinalResult));
+
+             return parseData
+
+         }
+         function getProcessessQueue(filter)
+         {
+             var filters =[]
+             filters.push(filter)
+            var customrecord_everhourprocessingqueueSearchObj = search.create({
+                type: "customrecord_everhourprocessingqueue",
+                filters:filters,
+                columns:
+                [
+                   search.createColumn({name: "custrecord_everhourprocessingqueue_rcrid", label: "Record Id"}),
+                   search.createColumn({name: "custrecord_everhourprocessingqueue_rcd", label: "Record Type"}),
+                   search.createColumn({name: "custrecord_everprocessingstatus", label: "Status"}),
+                   search.createColumn({name: "custrecord_everhourprocessingqueue_error", label: "Last Error"}),
+                   search.createColumn({name: "custrecord_everhourprocessingqueue_inid", label: "Netsuite InternalId"}),
+                   search.createColumn({name: "custrecord_everhourprocessingqueue_recor", label: "Record Name"})
+
+
+                ]
+             });
+
+             var Data = customrecord_everhourprocessingqueueSearchObj.run();
+             var FinalResult = Data.getRange(0, 999);
+             var  parseData = JSON.parse(JSON.stringify(FinalResult));
+
+             return parseData
+
+         }
          
 
-         
 
         return {
             onRequest: onRequest
