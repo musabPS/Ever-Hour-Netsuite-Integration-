@@ -126,7 +126,6 @@
       
                          var projectTasks =  getProjectTasks(res.values.custrecord_everhourprocessingqueue_rcrid)
                         
-
                              var projecTask
         
                              log.debug("projectTasks.length", projectTasks.length)
@@ -256,7 +255,7 @@
               {
                 var data= JSON.parse(res.values.custrecord_everhourprocessingqueue_data) 
                 log.debug('name', data.name) 
-                     createExpenseReport(data,res.id)
+                     createExpenseReport(data,res.id,subsidiary)
               }
 
               else if(res.values.custrecord_everhourprocessingqueue_rcd.text=="Time Sheet")
@@ -539,13 +538,18 @@
 
        var everHourProjects 
        var projectSaveId
-       var totalAllocateHours=0 ,assigneeInternalId
+       var totalAllocateHours=0 ,assigneeInternalId,parentTaskInternalId=0
 
        if(status=="Pending Update")
        {
 
-        record.delete({ type: 'projecttask', id: netsuiteInternalId });
+      //  record.delete({ type: 'projecttask', id: netsuiteInternalId });
 
+       }
+       
+       if(everHourData.parentId)
+       {
+        parentTaskInternalId =  convertTask_TO_Milestone(everHourData.parentId,everHourIntenlaiId)
        }
 
         everHourProjects = record.create({
@@ -684,6 +688,13 @@
                         });
 
                     }
+                    if(parentTaskInternalId>0)
+                    {
+                        everHourProjects.setValue({   
+                            fieldId: 'parent',
+                            value: parentTaskInternalId
+                        });
+                    }
 
                     // if(data.dueOn)
                     // {
@@ -694,6 +705,9 @@
                     //     });
 
                     // }
+
+                  
+
 
 
 
@@ -935,8 +949,14 @@
 
      function createExpenseReport(data,internalId ,subsidiary)
      {
+             if(!data.user)
+            {
+             updateErrorProcessQueue(internalId,"team not found on ever hour") 
+             return
+            }
 
         var employee    =  getEmployeesInternalId(data.user)
+
         var expenseCat  =  getExpenseCategories(data.category)
         var getProject  =  getproject(data.project)
 
@@ -1188,9 +1208,9 @@
             ]
          });
 
-         var isData = customrecord_everhourprocessingqueueSearchObj.run();
-         var isFinalResult = isData.getRange(0, 999);
-         var  parseData = JSON.parse(JSON.stringify(isFinalResult));
+         var Data = customrecord_everhourprocessingqueueSearchObj.run();
+         var FinalResult = Data.getRange(0, 999);
+         var  parseData = JSON.parse(JSON.stringify(FinalResult));
 
          return parseData
      }
@@ -1413,6 +1433,82 @@
 
 
 
+     }
+     function convertTask_TO_Milestone(everHourId,processQueueInternalId)
+     {
+
+         var taskData =  getMileStone(everHourId)
+         if(taskData.length==0){return}
+
+         var taskInternalId = taskData[0].id
+
+         var everHourProjects = record.load({
+            id: taskInternalId,
+            type: 'projecttask', 
+            isDynamic: true
+           });
+
+        totalLine = everHourProjects.getLineCount({"sublistId": "assignee"})
+        for(var i=0; i<totalLine; i++)
+        {
+          everHourProjects.removeLine({"sublistId": "assignee", "line": 0});
+        }
+
+        everHourProjects.setValue({   
+            fieldId: 'plannedwork',
+            value: 0
+        });
+
+            mileStoneSaveId =   everHourProjects.save({                   
+                ignoreMandatoryFields: true    
+            });
+
+            log.debug("checkmilestone",mileStoneSaveId)
+
+               var createUpdateSupportCase = record.load({
+                id: processQueueInternalId,
+                type: 'customrecord_everhourprocessingqueue', 
+                isDynamic: true
+            });
+
+              createUpdateSupportCase.setValue({   
+                fieldId: 'custrecord_everhour_parent_task_check',
+                value:  true
+              });
+    
+              saveId =  createUpdateSupportCase.save({                   
+                ignoreMandatoryFields: true    
+            });
+        
+
+            return mileStoneSaveId
+        
+
+
+     }
+     function getMileStone(everHourId)
+     {
+        var projecttaskSearchObj = search.create({
+            type: "projecttask",
+            filters:
+            [
+               ["ismilestone","is","F"], 
+               "AND", 
+               ["custevent_everhourid","is",everHourId]
+            ],
+            columns:
+            [
+               search.createColumn({name: "title", label: "Name"}),
+               search.createColumn({name: "internalid", label: "Internal ID"}),
+               search.createColumn({name: "ismilestone", label: "Milestone"})
+            ]
+         });
+
+         var Data = projecttaskSearchObj.run();
+         var FinalResult = Data.getRange(0, 999);
+         var  parseData = JSON.parse(JSON.stringify(FinalResult));
+
+         return parseData
      }
 
      

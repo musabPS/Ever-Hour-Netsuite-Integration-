@@ -427,11 +427,11 @@
                  if(lineCount==0)
                 {
                     console.log("lineCountinif",lineCount)
-                    updateStatus_Link(processsData)
+                  //  updateStatus_Link(processsData)
                     clearInterval(a);
                     clearInterval(b);
                     msg.hide();
-                    updateMessage("No data found to be sync srcipt start executing and crete a pending record");
+                    updateMessage("No data found to be sync, srcipt start executing and create a pending record");
                   
                 }
                           
